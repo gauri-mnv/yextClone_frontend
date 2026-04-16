@@ -108,7 +108,7 @@ export default function Dashboard() {
         <div style={{ padding: "10px 20px", borderRadius: "8px", background: "var(--accent-color)", color: "white", fontWeight: "bold" }}>
           Total: {businesses.length}
         </div>
-        <button onClick={() => router.push("/search")} style={{ backgroundColor: "#28a745", color: "white" }}>
+        <button onClick={() => router.push("/allSearch")} style={{ backgroundColor: "#28a745", color: "white" }}>
           🔍 Discover New Locations
         </button>
       </div>
