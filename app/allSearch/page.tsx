@@ -51,8 +51,8 @@ export default function SearchPage() {
     const s = source.toLowerCase();
     if (s.includes("google")) return "#52d1b8";
     if (s.includes("yelp")) return "#b90c0c";
-    if (s.includes("facebook")) return "#1877F2";
-    if (s.includes("bing")) return "#f7ed69";
+    if (s.includes("N49")) return "#e65b29";
+    if (s.includes("MapQuest")) return "#69f79b";
     return "#82888e";
   };
 
@@ -70,7 +70,7 @@ export default function SearchPage() {
         {/* Search Header Section */}
         <div style={{ background: "#1e293b", padding: "40px", borderRadius: "20px", border: "1px solid #334155", textAlign: "center", marginBottom: "40px" }}>
           <h1 style={{ fontSize: "2rem", marginBottom: "10px" }}>🔍 Multi-Source NAP Scraper</h1>
-          <p style={{ color: "#bdc9d9", marginBottom: "30px" }}>Discover business data from Google, Yelp, and Facebook</p>
+          <p style={{ color: "#bdc9d9", marginBottom: "30px" }}>Discover business data from Google, Yelp, MapQuest, and N49</p>
 
           <form onSubmit={handleStartScraping} style={{ display: "flex", flexWrap: "wrap", gap: "15px", justifyContent: "center" }}>
             <input
@@ -110,8 +110,8 @@ export default function SearchPage() {
         <div style={{ display: "flex", gap: "20px", justifyContent: "flex-end", marginBottom: "10px", fontSize: "0.8rem" }}>
           <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><div style={{ width: 8, height: 8, background: "#52d1b8", borderRadius: "50%" }}></div> Google</span>
           <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><div style={{ width: 8, height: 8, background: "#b90c0c", borderRadius: "50%" }}></div> Yelp</span>
-          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><div style={{ width: 8, height: 8, background: "#1877F2", borderRadius: "50%" }}></div> Facebook</span>
-          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><div style={{ width: 8, height: 8, background: "#f7ed69", borderRadius: "50%" }}></div> Bing</span>
+          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><div style={{ width: 8, height: 8, background: "#69f79b", borderRadius: "50%" }}></div> MapQuest</span>
+          <span style={{ display: "flex", alignItems: "center", gap: "5px" }}><div style={{ width: 8, height: 8, background: "#e65b29", borderRadius: "50%" }}></div> N49</span>
         </div>
 
         {/* Results Table */}
