@@ -1,4 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+```
+Airdrie Choice Dental
+2100 Market St, Airdrie, AB T4A 0R8 
+5877759911
+
+---
+
+
+Swanavon Dental Clinic
+10104 97 Ave, Grande Prairie, AB T8V 7X6 
+7808311150
+
+---
+
+Darji Clinic 20000
+767 Peachtree Pkwy Unit 4, Cumming, GA 30041, USA
+(678) 208-3460
+
+---
+
+Wright Smiles Pediatric Dentistry
+50 Remick Blvd, Springboro, OH
+(937) 885-2222
+
+```
+
+
+<!-- This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
 
@@ -33,4 +60,4 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details. -->

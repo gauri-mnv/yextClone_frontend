@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
@@ -18,6 +19,11 @@ interface AuditResult {
     phone?: any;
     address?: any;
   };
+  matched:{
+    name: boolean;
+    phone: boolean;
+    address: boolean;
+  }
 }
 
 interface EnhancedBusiness {
@@ -40,17 +46,25 @@ export default function SearchPage() {
 
   // --- Filter States ---
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string[]>(["Verified", "Mismatched"]); // Default all selected
+  const [statusFilter, setStatusFilter] = useState<string[]>(["Verified", "Mismatch"]); 
 
   // const SCRAPER_API_URL = "http://localhost:4000/scrape";
     const socketRef = useRef<Socket | null>(null);
 
      useEffect(() => {
-    // Backend URL se connect karein
-    socketRef.current = io("http://localhost:4000");
+    // Backend URL connect
+    // const socket = io("http://localhost:4000");
 
-    // "dataChunk" sunne ke liye listener
-    socketRef.current.on("dataChunk", (newResult: EnhancedBusiness) => {
+    const socket = io("http://localhost:4000", {
+  reconnection: true,             
+  reconnectionAttempts: 3,       
+  reconnectionDelay: 5000,       
+  // transports: ["polling", "websocket"] // default 
+});
+    socketRef.current = socket;
+    // "dataChunk" listener
+    socket.on("dataChunk", (newResult: EnhancedBusiness) => {
+      // console.log("🔥 Backend Response:", newResult);
       setResults((prev) => {
         // Agar source pehle se hai toh update karein (Safety check)
         const exists = prev.findIndex(r => r.meta.source === newResult.meta.source);
@@ -64,12 +78,15 @@ export default function SearchPage() {
     });
 
     // Scraping khatam hone par
-    socketRef.current.on("scrapingFinished", () => {
+    socket.on("scrapingFinished", () => {
       setIsScraping(false);
     });
-
+  // console.log("📊 All Results State:", results);
     return () => {
-      socketRef.current?.disconnect();
+      // socketRef.current?.disconnect();
+      socket.off("dataChunk");
+    socket.off("scrapingFinished");
+    socket.disconnect();
     };
   }, []);
 // --- Logic for Filters ---
@@ -84,6 +101,7 @@ export default function SearchPage() {
       return sourceMatch && statusMatch;
     });
   }, [results, selectedSources, statusFilter]);
+
 
   const toggleSource = (source: string) => {
     setSelectedSources(prev => 
@@ -107,27 +125,7 @@ export default function SearchPage() {
 
     setIsScraping(true);
     setResults([]);
-    setShowAudit(false);
-
-    // try {
-    //   const res = await fetch(SCRAPER_API_URL, {
-    //     method: "POST",
-    //     headers: { "Content-Type": "application/json" },
-    //     body: JSON.stringify({
-    //       name: businessName,
-    //       location: location,
-    //       phone: phone,
-    //     }),
-    //   });
-
-    //   const data = await res.json();
-    //   setResults(data);
-    // } catch (err) {
-    //   console.error(err);
-    //   alert("Scraper failed. Check if Backend is running.");
-    // } finally {
-    //   setIsScraping(false);
-    // }
+    // setShowAudit(false);
 
     socketRef.current?.emit("startScraping", {
       name: businessName,
@@ -221,7 +219,7 @@ export default function SearchPage() {
               <div>
                 <p style={{ fontSize: "0.8rem", color: "#94a3b8", marginBottom: "10px", fontWeight: "bold" }}>AUDIT STATUS:</p>
                 <div style={{ display: "flex", gap: "10px" }}>
-                  {["Verified", "Mismatched"].map(status => (
+                  {["Verified", "Mismatch"].map(status => (
                     <label key={status} style={checkboxLabelStyle}>
                       <input 
                         type="checkbox" 
@@ -239,7 +237,9 @@ export default function SearchPage() {
         )}
 
         {/* ///--------------------------------------------------------- */}
-
+<p style={{ color: "yellow" , marginBottom: "10px" }}>
+  Total Results: {results.length} | Filtered: {filteredResults.length}
+</p>
 
         {/* Results Table */}
         {filteredResults.length > 0 && (
@@ -256,8 +256,7 @@ export default function SearchPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredResults.map((item, idx) => {
-                  const hasData = item.scraped && Object.keys(item.scraped).length > 0;
+                {filteredResults.map((item, idx) =>{
                   return (
                     <tr key={idx} style={{ borderBottom: "1px solid #334155" }}>
                       <td style={tdStyle}>
@@ -265,13 +264,13 @@ export default function SearchPage() {
                           {item.meta.source}
                         </span>
                       </td>
-                      <td style={tdStyle}>{item.scraped.name || "—"}</td>
-                      <td style={{ ...tdStyle, color: "#94a3b8", fontSize: "0.85rem" }}>{item.scraped.address || "—"}</td>
-                      <td style={tdStyle}>{item.scraped.phone || "—"}</td>
+                      <td style={tdStyle}>{item.scraped.name || item.audit.results.name || "—"}</td>
+                      <td style={{ ...tdStyle, color: "#94a3b8", fontSize: "0.85rem" }}>{item.scraped.address || item.audit.results.address || "—"}</td>
+                      <td style={tdStyle}>{item.scraped.phone || item.audit.results.phone || "—"}</td>
                       <td style={tdStyle}>
                         {item.meta.locationLink ? (
                            <a href={item.meta.locationLink} target="_blank" rel="noreferrer" style={{ color: "#38bdf8", textDecoration: "none" }}>Link</a>
-                        ) : "N/A"}
+                        ) : "—"}
                       </td>
                       <td style={tdStyle}>
                         <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
@@ -284,17 +283,17 @@ export default function SearchPage() {
                           }}>
                             {item.audit.status}
                           </span>
-                          {hasData && (
+                      
                             <div style={{ fontSize: "0.8rem", display: "flex", gap: "8px" }}>
-                              <span>N:{item.audit.results.name && item.audit.results.name !== "-" ? "✅" : "❌"}</span>
-                              <span>A:{item.audit.results.address && item.audit.results.address !== "-" ? "✅" : "❌"}</span>
-                              <span>P:{item.audit.results.phone && item.audit.results.phone !== "-" ? "✅" : "❌"}</span>
+                              <span>N:{item.audit.results.name && item.audit.results.name !== '' ? "✅" : "❌"}</span>
+                              <span>A:{item.audit.results.address && item.audit.results.address !== '' ? "✅" : "❌"}</span>
+                              <span>P:{item.audit.results.phone && item.audit.results.phone !== '' ? "✅" : "❌"}</span>
                             </div>
-                          )}
+                          
                         </div>
                       </td>
                     </tr>
-                  );
+                  )
                 })}
               </tbody>
             </table>
