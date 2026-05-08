@@ -1,10 +1,9 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { AlignCenter, AlignJustify } from "lucide-react";
 import { transform } from "next/dist/build/swc/generated-native";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 
 // Updated Interface to match your JSON structure
@@ -12,22 +11,30 @@ interface ScrapedData {
   name?: string;
   phone?: string;
   address?: string;
+  locationLink?: string;
 }
 
 interface AuditResult {
+  [x: string]: ReactNode;
+
   status: string;
+
   results: {
     name?: any;
     phone?: any;
     address?: any;
+    locationLink?: any;
   };
+
   matched: {
     name: boolean;
     phone: boolean;
     address: boolean;
+    locationLink: boolean;
   };
-}
 
+  score?: number;
+}
 interface EnhancedBusiness {
   scraped: ScrapedData;
   meta: {
@@ -42,6 +49,7 @@ export default function SearchPage() {
   const [businessName, setBusinessName] = useState("");
   const [location, setLocation] = useState("");
   const [phone, setPhone] = useState("");
+  const [locationLink, setlocationLink] = useState("");
   const [isScraping, setIsScraping] = useState(false);
   const [results, setResults] = useState<EnhancedBusiness[]>([]);
   const [showAudit, setShowAudit] = useState(false);
@@ -147,6 +155,7 @@ export default function SearchPage() {
       name: businessName,
       location: location,
       phone: phone,
+      locationLink: locationLink,
     });
   };
 
@@ -232,6 +241,13 @@ export default function SearchPage() {
               onChange={(e) => setPhone(e.target.value)}
               style={inputStyle}
             />
+            <input
+              type="url"
+              placeholder="Website Link"
+              value={locationLink}
+              onChange={(e) => setlocationLink(e.target.value)}
+              style={inputStyle}
+            />
 
             <button
               type="button"
@@ -293,7 +309,14 @@ export default function SearchPage() {
 
               {/* Source Filters */}
               <>
-                <div style={{ display: "flex", flexDirection: "column",  position: "relative", width: "auto"}}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    position: "relative",
+                    width: "auto",
+                  }}
+                >
                   <div
                     onClick={() => setSIsOn(!isSOn)}
                     style={{
@@ -307,46 +330,57 @@ export default function SearchPage() {
                   >
                     <span>{isSOn ? "Close" : " Source"}</span>
                   </div>
-                   <div style={toggleSBoxStyle}>
-            {isSOn && (
-              <ul
-                style={{
-                  listStyle: "none",
-                  padding: "10px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "5px",
-                  
-                }}
-              >
-                {uniqueSources.map((source, idx) => (
-                  <li key={source} 
-                  style={{
-                   display : "flex",
-                      alignItems: "center",
-                      padding: "8px 12px",}}>
-                    <label style={checkboxLabelStyle}>
-                      <input
-                        type="checkbox"
-                        checked={selectedSources.includes(source)}
-                        onChange={() => toggleSource(source)}
-                        style={{ marginRight: "1px",boxSizing:"inherit" }}
-                      />
-                      {source}
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
+                  <div style={toggleSBoxStyle}>
+                    {isSOn && (
+                      <ul
+                        style={{
+                          listStyle: "none",
+                          padding: "10px",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "5px",
+                        }}
+                      >
+                        {uniqueSources.map((source, idx) => (
+                          <li
+                            key={source}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              padding: "8px 12px",
+                            }}
+                          >
+                            <label style={checkboxLabelStyle}>
+                              <input
+                                type="checkbox"
+                                checked={selectedSources.includes(source)}
+                                onChange={() => toggleSource(source)}
+                                style={{
+                                  marginRight: "1px",
+                                  boxSizing: "inherit",
+                                }}
+                              />
+                              {source}
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
               </>
               {/* ///--------------------------------------------------------- */}
 
               {/* Status Filter */}
               <>
-                <div style={{ display: "inline-block", flexDirection: "column",  position: "relative", width: "auto"}}>
+                <div
+                  style={{
+                    display: "inline-block",
+                    flexDirection: "column",
+                    position: "relative",
+                    width: "auto",
+                  }}
+                >
                   <div
                     onClick={() => setIsOn(!isOn)}
                     style={{
@@ -360,45 +394,43 @@ export default function SearchPage() {
                   >
                     <span>{isOn ? "Close" : " Status"}</span>
                   </div>
-                   <div style={toggleBoxStyle}>
-            {isOn && (
-              <ul
-                style={{
-                  listStyle: "none",
-                  padding: "2px",
-                  display: "flex",
-                  flexDirection: "row",
-                  gap: "5px",
-                }}
-              >
-                {["Verified", "Mismatch"].map((status, idx) => (
-                  <li key={status}>
-                    <label style={checkboxLabelStyle}>
-                      <input
-                        type="checkbox"
-                        checked={statusFilter.includes(status)}
-                        onChange={() => toggleStatus(status)}
-                        style={{ marginRight: "1px" ,boxSizing:"inherit"}}
-                      />
-                      {/* <span>{status}</span> */}
-                      {status}
-                      
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
+                  <div style={toggleBoxStyle}>
+                    {isOn && (
+                      <ul
+                        style={{
+                          listStyle: "none",
+                          padding: "2px",
+                          display: "flex",
+                          flexDirection: "row",
+                          gap: "5px",
+                        }}
+                      >
+                        {["Verified", "Mismatch"].map((status, idx) => (
+                          <li key={status}>
+                            <label style={checkboxLabelStyle}>
+                              <input
+                                type="checkbox"
+                                checked={statusFilter.includes(status)}
+                                onChange={() => toggleStatus(status)}
+                                style={{
+                                  marginRight: "1px",
+                                  boxSizing: "inherit",
+                                }}
+                              />
+                              {/* <span>{status}</span> */}
+                              {status}
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </div>
               </>
             </div>
-
-
-                
           </div>
         )}
-        
+
         {/* ///--------------------------------------------------------- */}
         <p style={{ color: "yellow", marginBottom: "10px" }}>
           Total Results: {results.length} | Filtered: {filteredResults.length}
@@ -432,18 +464,37 @@ export default function SearchPage() {
                   return (
                     <tr key={idx} style={{ borderBottom: "1px solid #334155" }}>
                       <td style={tdStyle}>
-                        <span
+                        <div
                           style={{
-                            fontSize: "0.65rem",
-                            fontWeight: "bold",
-                            padding: "4px 8px",
-                            borderRadius: "5px",
-                            background: getSourceColor(item.meta.source),
-                            color: "white",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
                           }}
                         >
-                          {item.meta.source}
-                        </span>
+                          <span
+                            style={{
+                              width: "10px",
+                              height: "10px",
+                              borderRadius: "50%",
+                              background: getSourceColor(item.meta.source),
+                              display: "inline-block",
+                            }}
+                          />
+
+                          <span
+                            style={{
+                              fontSize: "0.75rem",
+                              fontWeight: "bold",
+                              padding: "4px 8px",
+                              borderRadius: "5px",
+                              background: "#1e293b",
+                              border: `1px solid ${getSourceColor(item.meta.source)}`,
+                              color: getSourceColor(item.meta.source),
+                            }}
+                          >
+                            {item.meta.source}
+                          </span>
+                        </div>
                       </td>
                       <td style={tdStyle}>
                         {item.scraped.name || item.audit.results.name || "—"}
@@ -508,24 +559,21 @@ export default function SearchPage() {
                           >
                             <span>
                               N:
-                              {item.audit.results.name &&
-                              item.audit.results.name !== ""
-                                ? "✅"
-                                : "❌"}
+                              {item.audit.matched.name ? "✅" : "❌"}
                             </span>
                             <span>
                               A:
-                              {item.audit.results.address &&
-                              item.audit.results.address !== ""
-                                ? "✅"
-                                : "❌"}
+                              {item.audit.matched.address ? "✅" : "❌"}
                             </span>
                             <span>
                               P:
-                              {item.audit.results.phone &&
-                              item.audit.results.phone !== ""
-                                ? "✅"
-                                : "❌"}
+                              {item.audit.matched.phone ? "✅" : "❌"}
+                            </span>
+                          </div>
+                          <div>
+                            <span>
+                              score:
+                              {item.audit.score}
                             </span>
                           </div>
                         </div>
@@ -564,14 +612,13 @@ const tdStyle = { padding: "15px", fontSize: "0.85rem" };
 const checkboxLabelStyle = {
   display: "flex",
   flexDirection: "row",
-//  justifyContent: "left",
+  //  justifyContent: "left",
   gap: "2px",
   alignItems: "left",
   fontSize: "0.80rem",
   cursor: "pointer",
   borderRadius: "4px",
-maxWidth: "auto",
-
+  maxWidth: "auto",
 };
 const toggleBoxStyle = {
   display: "flex-box",
@@ -582,10 +629,10 @@ const toggleBoxStyle = {
   border: "1px solid black",
   color: "#ccc",
   position: "absolute",
-                    top: "100%",        
-                    left: "0",           
-                 overflow:" visible",
-                 marginRight: "12px",
+  top: "100%",
+  left: "0",
+  overflow: " visible",
+  marginRight: "12px",
 };
 const toggleSBoxStyle = {
   display: "flex-box",
@@ -595,9 +642,9 @@ const toggleSBoxStyle = {
   borderRadius: "3px",
   border: "1px solid black",
   color: "#ccc",
-   position: "absolute",
-                    top: "100%",        
-                    left: "0",           
-                 overflow:" visible",
-                  // marginRight: "100px",
+  position: "absolute",
+  top: "100%",
+  left: "0",
+  overflow: " visible",
+  // marginRight: "100px",
 };
