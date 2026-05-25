@@ -1,0 +1,14 @@
+[
+  {
+    "businessName": "Airdrie Choice Dental",
+    "location": "2100 Market St, Airdrie, AB T4A 0R8",
+    "phone": "5877759911",
+    "locationLink": "https://www.airdriechoicedental.com/"
+  },
+  {
+    "businessName": "Swanavon Dental Clinic",
+    "location": "10104 97 Ave, Grande Prairie, AB T8V 7X6",
+    "phone": "7808311150",
+    "locationLink": "https://www.airdriechoicedental.com/"
+  }
+]

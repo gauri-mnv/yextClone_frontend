@@ -1,8 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-import { AlignCenter, AlignJustify } from "lucide-react";
-import { transform } from "next/dist/build/swc/generated-native";
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 
@@ -16,25 +14,22 @@ interface ScrapedData {
 
 interface AuditResult {
   [x: string]: ReactNode;
-
   status: string;
-
   results: {
     name?: any;
     phone?: any;
     address?: any;
     locationLink?: any;
   };
-
   matched: {
     name: boolean;
     phone: boolean;
     address: boolean;
     locationLink: boolean;
   };
-
   score?: number;
 }
+
 interface EnhancedBusiness {
   scraped: ScrapedData;
   meta: {
@@ -44,6 +39,29 @@ interface EnhancedBusiness {
   };
   audit: AuditResult;
 }
+
+interface TestInput {
+  businessName: string;
+  location: string;
+  phone?: string;
+  locationLink?: string;
+}
+
+// Static fallback data in case the fetch fails or during compile time
+const fallbackTestData: TestInput[] = [
+  {
+    businessName: "Airdrie Choice Dental",
+    location: "2100 Market St, Airdrie, AB T4A 0R8",
+    phone: "5877759911",
+    locationLink: "https://www.airdriechoicedental.com/",
+  },
+  {
+    businessName: "Swanavon Dental Clinic",
+    location: "10104 97 Ave, Grande Prairie, AB T8V 7X6",
+    phone: "7808311150",
+    locationLink: "https://www.airdriechoicedental.com/",
+  },
+];
 
 export default function SearchPage() {
   const [businessName, setBusinessName] = useState("");
@@ -56,6 +74,10 @@ export default function SearchPage() {
   const [isOn, setIsOn] = useState(false);
   const [isSOn, setSIsOn] = useState(false);
 
+  // --- Sequential Testing States ---
+  const [testList, setTestList] = useState<TestInput[]>(fallbackTestData);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
   // --- Filter States ---
   const [selectedSources, setSelectedSources] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string[]>([
@@ -63,25 +85,31 @@ export default function SearchPage() {
     "Mismatch",
   ]);
 
-  // const SCRAPER_API_URL = "http://localhost:4000/scrape";
   const socketRef = useRef<Socket | null>(null);
 
+  // Load the test.txt data automatically on component mount
   useEffect(() => {
-    // Backend URL connect
-    // const socket = io("http://localhost:4000");
+    fetch("/test.txt")
+      .then((res) => {
+        if (res.ok) return res.json();
+        throw new Error("Local file not fetched");
+      })
+      .then((data) => {
+        if (Array.isArray(data)) setTestList(data);
+      })
+      .catch((err) => console.log("Using static fallback test items.", err));
+  }, []);
 
+  useEffect(() => {
     const socket = io("http://localhost:4000", {
       reconnection: true,
       reconnectionAttempts: 3,
       reconnectionDelay: 5000,
-      // transports: ["polling", "websocket"] // default
     });
     socketRef.current = socket;
-    // "dataChunk" listener
+
     socket.on("dataChunk", (newResult: EnhancedBusiness) => {
-      // console.log("🔥 Backend Response:", newResult);
       setResults((prev) => {
-        // Agar source pehle se hai toh update karein (Safety check)
         const exists = prev.findIndex(
           (r) => r.meta.source === newResult.meta.source,
         );
@@ -94,18 +122,59 @@ export default function SearchPage() {
       });
     });
 
-    // Scraping khatam hone par
     socket.on("scrapingFinished", () => {
       setIsScraping(false);
     });
-    // console.log("📊 All Results State:", results);
+
     return () => {
-      // socketRef.current?.disconnect();
       socket.off("dataChunk");
       socket.off("scrapingFinished");
       socket.disconnect();
     };
   }, []);
+
+  // --- Step-by-Step Test Execution ---
+  const handleNextTestStep = () => {
+    if (currentIndex >= testList.length) {
+      alert(
+        "🎉 All test data objects have been executed! Resetting index back to 0.",
+      );
+      setCurrentIndex(0);
+      return;
+    }
+
+    const currentItem = testList[currentIndex];
+
+    // 1. Automatically fill the input text states
+    setBusinessName(currentItem.businessName || "");
+    setLocation(currentItem.location || "");
+    setPhone(currentItem.phone || "");
+    setlocationLink(currentItem.locationLink || "");
+
+    // 2. Clear old dashboard logs and start execution
+    setResults([]);
+    setIsScraping(true);
+
+    socketRef.current?.emit("startScraping", {
+      name: currentItem.businessName,
+      location: currentItem.location,
+      phone: currentItem.phone || "",
+      locationLink: currentItem.locationLink || "",
+    });
+
+    // 3. Increment sequence marker for the next manual click event
+    setCurrentIndex((prev) => prev + 1);
+  };
+
+  // --- Form Reset Trigger ---
+  const handleClearForm = () => {
+    setBusinessName("");
+    setLocation("");
+    setPhone("");
+    setlocationLink("");
+    setResults([]);
+  };
+
   // --- Logic for Filters ---
   const uniqueSources = useMemo(() => {
     return Array.from(new Set(results.map((r) => r.meta.source)));
@@ -138,8 +207,6 @@ export default function SearchPage() {
     );
   };
 
-  ///-----------------------
-
   const handleStartScraping = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!businessName || !location) {
@@ -149,7 +216,6 @@ export default function SearchPage() {
 
     setIsScraping(true);
     setResults([]);
-    // setShowAudit(false);
 
     socketRef.current?.emit("startScraping", {
       name: businessName,
@@ -261,6 +327,24 @@ export default function SearchPage() {
               {isScraping ? "Scraping..." : "Search All Sources"}
             </button>
 
+            {/* --- Updated Sequential Testing UI Controls --- */}
+            <button
+              type="button"
+              onClick={handleNextTestStep}
+              disabled={isScraping}
+              style={{ ...buttonStyle, background: "#d97706" }}
+            >
+              ⚡ Run Test Step (Item {currentIndex + 1}/{testList.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={handleClearForm}
+              style={{ ...buttonStyle, background: "#ef4444" }}
+            >
+              🧹 Clear Form
+            </button>
+
             {results.length > 0 && (
               <button
                 type="button"
@@ -276,7 +360,7 @@ export default function SearchPage() {
             )}
           </form>
         </div>
-        {/* ///--------------------------------------------------------- */}
+
         {/* --- Filter Controls --- */}
         {results.length > 0 && (
           <div
@@ -308,130 +392,117 @@ export default function SearchPage() {
               </p>
 
               {/* Source Filters */}
-              <>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  position: "relative",
+                  width: "auto",
+                }}
+              >
                 <div
+                  onClick={() => setSIsOn(!isSOn)}
                   style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    position: "relative",
-                    width: "auto",
+                    cursor: "pointer",
+                    margin: "5px",
+                    fontSize: "0.9rem",
+                    color: "#94a3b8",
+                    marginBottom: "10px",
+                    fontWeight: "bold",
                   }}
                 >
-                  <div
-                    onClick={() => setSIsOn(!isSOn)}
-                    style={{
-                      cursor: "pointer",
-                      margin: "5px",
-                      fontSize: "0.9rem",
-                      color: "#94a3b8",
-                      marginBottom: "10px",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    <span>{isSOn ? "Close" : " Source"}</span>
-                  </div>
-                  <div style={toggleSBoxStyle}>
-                    {isSOn && (
-                      <ul
-                        style={{
-                          listStyle: "none",
-                          padding: "10px",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "5px",
-                        }}
-                      >
-                        {uniqueSources.map((source, idx) => (
-                          <li
-                            key={source}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              padding: "8px 12px",
-                            }}
-                          >
-                            <label style={checkboxLabelStyle}>
-                              <input
-                                type="checkbox"
-                                checked={selectedSources.includes(source)}
-                                onChange={() => toggleSource(source)}
-                                style={{
-                                  marginRight: "1px",
-                                  boxSizing: "inherit",
-                                }}
-                              />
-                              {source}
-                            </label>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                  <span>{isSOn ? "Close" : " Source"}</span>
                 </div>
-              </>
-              {/* ///--------------------------------------------------------- */}
+                <div style={toggleSBoxStyle}>
+                  {isSOn && (
+                    <ul
+                      style={{
+                        listStyle: "none",
+                        padding: "10px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "5px",
+                      }}
+                    >
+                      {uniqueSources.map((source) => (
+                        <li
+                          key={source}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            padding: "8px 12px",
+                          }}
+                        >
+                          <label style={checkboxLabelStyle}>
+                            <input
+                              type="checkbox"
+                              checked={selectedSources.includes(source)}
+                              onChange={() => toggleSource(source)}
+                              style={{ marginRight: "1px" }}
+                            />
+                            {source}
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
 
               {/* Status Filter */}
-              <>
+              <div
+                style={{
+                  display: "inline-block",
+                  flexDirection: "column",
+                  position: "relative",
+                  width: "auto",
+                }}
+              >
                 <div
+                  onClick={() => setIsOn(!isOn)}
                   style={{
-                    display: "inline-block",
-                    flexDirection: "column",
-                    position: "relative",
-                    width: "auto",
+                    cursor: "pointer",
+                    margin: "2px",
+                    fontSize: "0.9rem",
+                    color: "#94a3b8",
+                    marginBottom: "10px",
+                    fontWeight: "bold",
                   }}
                 >
-                  <div
-                    onClick={() => setIsOn(!isOn)}
-                    style={{
-                      cursor: "pointer",
-                      margin: "2px",
-                      fontSize: "0.9rem",
-                      color: "#94a3b8",
-                      marginBottom: "10px",
-                      fontWeight: "bold",
-                    }}
-                  >
-                    <span>{isOn ? "Close" : " Status"}</span>
-                  </div>
-                  <div style={toggleBoxStyle}>
-                    {isOn && (
-                      <ul
-                        style={{
-                          listStyle: "none",
-                          padding: "2px",
-                          display: "flex",
-                          flexDirection: "row",
-                          gap: "5px",
-                        }}
-                      >
-                        {["Verified", "Mismatch"].map((status, idx) => (
-                          <li key={status}>
-                            <label style={checkboxLabelStyle}>
-                              <input
-                                type="checkbox"
-                                checked={statusFilter.includes(status)}
-                                onChange={() => toggleStatus(status)}
-                                style={{
-                                  marginRight: "1px",
-                                  boxSizing: "inherit",
-                                }}
-                              />
-                              {/* <span>{status}</span> */}
-                              {status}
-                            </label>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                  <span>{isOn ? "Close" : " Status"}</span>
                 </div>
-              </>
+                <div style={toggleBoxStyle}>
+                  {isOn && (
+                    <ul
+                      style={{
+                        listStyle: "none",
+                        padding: "2px",
+                        display: "flex",
+                        flexDirection: "row",
+                        gap: "5px",
+                      }}
+                    >
+                      {["Verified", "Mismatch"].map((status) => (
+                        <li key={status}>
+                          <label style={checkboxLabelStyle}>
+                            <input
+                              type="checkbox"
+                              checked={statusFilter.includes(status)}
+                              onChange={() => toggleStatus(status)}
+                              style={{ marginRight: "1px" }}
+                            />
+                            {status}
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        {/* ///--------------------------------------------------------- */}
         <p style={{ color: "yellow", marginBottom: "10px" }}>
           Total Results: {results.length} | Filtered: {filteredResults.length}
         </p>
@@ -460,127 +531,115 @@ export default function SearchPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredResults.map((item, idx) => {
-                  return (
-                    <tr key={idx} style={{ borderBottom: "1px solid #334155" }}>
-                      <td style={tdStyle}>
+                {filteredResults.map((item, idx) => (
+                  <tr key={idx} style={{ borderBottom: "1px solid #334155" }}>
+                    <td style={tdStyle}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: "10px",
+                            height: "10px",
+                            borderRadius: "50%",
+                            background: getSourceColor(item.meta.source),
+                            display: "inline-block",
+                          }}
+                        />
+                        <span
+                          style={{
+                            fontSize: "0.75rem",
+                            fontWeight: "bold",
+                            padding: "4px 8px",
+                            borderRadius: "5px",
+                            background: "#1e293b",
+                            border: `1px solid ${getSourceColor(item.meta.source)}`,
+                            color: getSourceColor(item.meta.source),
+                          }}
+                        >
+                          {item.meta.source}
+                        </span>
+                      </div>
+                    </td>
+                    <td style={tdStyle}>
+                      {item.scraped.name || item.audit.results.name || "—"}
+                    </td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        color: "#94a3b8",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      {item.scraped.address ||
+                        item.audit.results.address ||
+                        "—"}
+                    </td>
+                    <td style={tdStyle}>
+                      {item.scraped.phone || item.audit.results.phone || "—"}
+                    </td>
+                    <td style={tdStyle}>
+                      {item.meta.locationLink ? (
+                        <a
+                          href={item.meta.locationLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: "#38bdf8", textDecoration: "none" }}
+                        >
+                          Link
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td style={tdStyle}>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "4px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: "0.7rem",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            width: "fit-content",
+                            background:
+                              item.audit.status === "Verified"
+                                ? "#10b981"
+                                : "#ef4444",
+                          }}
+                        >
+                          {item.audit.status}
+                        </span>
                         <div
                           style={{
+                            fontSize: "0.8rem",
                             display: "flex",
-                            alignItems: "center",
                             gap: "8px",
                           }}
                         >
-                          <span
-                            style={{
-                              width: "10px",
-                              height: "10px",
-                              borderRadius: "50%",
-                              background: getSourceColor(item.meta.source),
-                              display: "inline-block",
-                            }}
-                          />
-
-                          <span
-                            style={{
-                              fontSize: "0.75rem",
-                              fontWeight: "bold",
-                              padding: "4px 8px",
-                              borderRadius: "5px",
-                              background: "#1e293b",
-                              border: `1px solid ${getSourceColor(item.meta.source)}`,
-                              color: getSourceColor(item.meta.source),
-                            }}
-                          >
-                            {item.meta.source}
+                          <span>N:{item.audit.matched.name ? "✅" : "❌"}</span>
+                          <span>
+                            A:{item.audit.matched.address ? "✅" : "❌"}
+                          </span>
+                          <span>
+                            P:{item.audit.matched.phone ? "✅" : "❌"}
                           </span>
                         </div>
-                      </td>
-                      <td style={tdStyle}>
-                        {item.scraped.name || item.audit.results.name || "—"}
-                      </td>
-                      <td
-                        style={{
-                          ...tdStyle,
-                          color: "#94a3b8",
-                          fontSize: "0.85rem",
-                        }}
-                      >
-                        {item.scraped.address ||
-                          item.audit.results.address ||
-                          "—"}
-                      </td>
-                      <td style={tdStyle}>
-                        {item.scraped.phone || item.audit.results.phone || "—"}
-                      </td>
-                      <td style={tdStyle}>
-                        {item.meta.locationLink ? (
-                          <a
-                            href={item.meta.locationLink}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ color: "#38bdf8", textDecoration: "none" }}
-                          >
-                            Link
-                          </a>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td style={tdStyle}>
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: "4px",
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: "0.7rem",
-                              padding: "2px 6px",
-                              borderRadius: "4px",
-                              width: "fit-content",
-                              background:
-                                item.audit.status === "Verified"
-                                  ? "#10b981"
-                                  : "#ef4444",
-                            }}
-                          >
-                            {item.audit.status}
-                          </span>
-
-                          <div
-                            style={{
-                              fontSize: "0.8rem",
-                              display: "flex",
-                              gap: "8px",
-                            }}
-                          >
-                            <span>
-                              N:
-                              {item.audit.matched.name ? "✅" : "❌"}
-                            </span>
-                            <span>
-                              A:
-                              {item.audit.matched.address ? "✅" : "❌"}
-                            </span>
-                            <span>
-                              P:
-                              {item.audit.matched.phone ? "✅" : "❌"}
-                            </span>
-                          </div>
-                          <div>
-                            <span>
-                              score:
-                              {item.audit.score}
-                            </span>
-                          </div>
+                        <div>
+                          <span>score:{item.audit.score}</span>
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -611,8 +670,7 @@ const thStyle = { padding: "15px", fontSize: "0.8rem", color: "#cbd5e1" };
 const tdStyle = { padding: "15px", fontSize: "0.85rem" };
 const checkboxLabelStyle = {
   display: "flex",
-  flexDirection: "row",
-  //  justifyContent: "left",
+  flexDirection: "row" as const,
   gap: "2px",
   alignItems: "left",
   fontSize: "0.80rem",
@@ -622,29 +680,28 @@ const checkboxLabelStyle = {
 };
 const toggleBoxStyle = {
   display: "flex-box",
-  flexDirection: "column",
+  flexDirection: "column" as const,
   maxWidth: "20em",
   background: "#334155",
   borderRadius: "3px",
   border: "1px solid black",
   color: "#ccc",
-  position: "absolute",
+  position: "absolute" as const,
   top: "100%",
   left: "0",
-  overflow: " visible",
+  overflow: "visible",
   marginRight: "12px",
 };
 const toggleSBoxStyle = {
   display: "flex-box",
-  flexDirection: "column",
+  flexDirection: "column" as const,
   maxWidth: "130px",
   background: "#334155",
   borderRadius: "3px",
   border: "1px solid black",
   color: "#ccc",
-  position: "absolute",
+  position: "absolute" as const,
   top: "100%",
   left: "0",
-  overflow: " visible",
-  // marginRight: "100px",
+  overflow: "visible",
 };
