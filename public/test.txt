@@ -1,0 +1,43 @@
+[
+  {
+    "businessName": "Airdrie Choice Dental",
+    "location": "2100 Market St, Airdrie, AB T4A 0R8",
+    "phone": "5877759911",
+    "locationLink": "https://www.airdriechoicedental.com/"
+  },
+  {
+    "businessName": "Swanavon Dental Clinic",
+    "location": "10104 97 Ave, Grande Prairie, AB T8V 7X6",
+    "phone": "7808311150",
+    "locationLink": "https://www.airdriechoicedental.com/"
+  },
+
+  {
+    "businessName": "Darji Clinic 20000",
+    "location": "767 Peachtree Pkwy Unit 4, Cumming, GA 30041, USA",
+    "phone": "6782083460",
+    "locationLink": ""
+  },
+  {
+    "businessName": "Wright Smiles Pediatric Dentistry",
+    "location": "50 Remick Blvd, Springboro, OH",
+    "phone": "9378852222",
+    "locationLink": ""
+  },
+  {
+    "businessName": "12th & 8th Dental",
+    "location": "1221 8 St SW #121, Calgary, Alberta T2R0L4",
+    "phone": "5878434946",
+    "locationLink": ""
+  },
+  {
+    "businessName": "404 Dental",
+    "location": "1091 Gorham St. Suite 108, Newmarket, Ontario L3Y8X7",
+    "phone": "3653630478",
+    "locationLink": ""
+  }
+]
+
+
+ 
+

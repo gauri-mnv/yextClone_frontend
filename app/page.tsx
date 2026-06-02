@@ -48,20 +48,7 @@ interface TestInput {
 }
 
 // Static fallback data in case the fetch fails or during compile time
-const fallbackTestData: TestInput[] = [
-  {
-    businessName: "Airdrie Choice Dental",
-    location: "2100 Market St, Airdrie, AB T4A 0R8",
-    phone: "5877759911",
-    locationLink: "https://www.airdriechoicedental.com/",
-  },
-  {
-    businessName: "Swanavon Dental Clinic",
-    location: "10104 97 Ave, Grande Prairie, AB T8V 7X6",
-    phone: "7808311150",
-    locationLink: "https://www.airdriechoicedental.com/",
-  },
-];
+const fallbackTestData: TestInput[] = [];
 
 export default function SearchPage() {
   const [businessName, setBusinessName] = useState("");
@@ -75,7 +62,7 @@ export default function SearchPage() {
   const [isSOn, setSIsOn] = useState(false);
 
   // --- Sequential Testing States ---
-  const [testList, setTestList] = useState<TestInput[]>(fallbackTestData);
+  const [testList, setTestList] = useState<TestInput[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
 
   // --- Filter States ---
@@ -89,15 +76,32 @@ export default function SearchPage() {
 
   // Load the test.txt data automatically on component mount
   useEffect(() => {
-    fetch("/test.txt")
-      .then((res) => {
-        if (res.ok) return res.json();
-        throw new Error("Local file not fetched");
-      })
-      .then((data) => {
-        if (Array.isArray(data)) setTestList(data);
-      })
-      .catch((err) => console.log("Using static fallback test items.", err));
+      const loadTestData = async () => {
+    try {
+      const res = await fetch("/test.txt");
+
+      if (!res.ok) {
+        throw new Error("Failed to load test.txt");
+      }
+
+      // Read as text first
+      const text = await res.text();
+
+      // Parse JSON array from file
+      const data: TestInput[] = JSON.parse(text);
+
+      if (Array.isArray(data)) {
+        setTestList(data);
+        console.log("Loaded test list:", data);
+      } else {
+        console.error("test.txt does not contain an array");
+      }
+    } catch (err) {
+      console.error("Failed to load test data:", err);
+    }
+  };
+
+  loadTestData();
   }, []);
 
   useEffect(() => {
