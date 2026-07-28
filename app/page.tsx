@@ -1,191 +1,711 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-import { useState, useEffect, FormEvent } from "react";
-import dynamic from "next/dynamic";
-import { Business } from "@/types/business";
-import { useRouter } from "next/navigation";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { io, Socket } from "socket.io-client";
 
-const Map = dynamic(() => import("@/components/Map"), {
-  ssr: false,
-  loading: () => (
-    <div
-      className="map-container"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "460px",
-        background: "#eee",
-        borderRadius: '5px'
-      }}
-    >
-      Loading Map...
-    </div>
-  ),
-});
+// Updated Interface to match your JSON structure
+interface ScrapedData {
+  name?: string;
+  phone?: string;
+  address?: string;
+  locationLink?: string;
+}
 
-export default function Dashboard() {
-  const [businesses, setBusinesses] = useState<Business[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [isClient, setIsClient] = useState(false);
-  const router = useRouter();
+interface AuditResult {
+  [x: string]: ReactNode;
+  status: string;
+  results: {
+    name?: any;
+    phone?: any;
+    address?: any;
+    locationLink?: any;
+  };
+  matched: {
+    name: boolean;
+    phone: boolean;
+    address: boolean;
+    locationLink: boolean;
+  };
+  score?: number;
+}
 
-  // --- Pagination State ---
-  const [currentPage, setCurrentPage] = useState(1);
-  const recordsPerPage = 4;
+interface EnhancedBusiness {
+  scraped: ScrapedData;
+  meta: {
+    source: string;
+    locationLink: string;
+    timestamp: string;
+  };
+  audit: AuditResult;
+}
 
-  const indexOfLastRecord = currentPage * recordsPerPage;
-  const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
-  
-  // FIX: Hum niche isi 'currentRecords' ko map karenge
-  const currentRecords = Array.isArray(businesses) 
-    ? businesses.slice(indexOfFirstRecord, indexOfLastRecord) 
-    : [];
+interface TestInput {
+  businessName: string;
+  location: string;
+  phone?: string;
+  locationLink?: string;
+}
 
-  const totalPages = Math.ceil((businesses?.length || 0) / recordsPerPage);
+// Static fallback data in case the fetch fails or during compile time
+const fallbackTestData: TestInput[] = [];
 
-  const [formData, setFormData] = useState({
-    name: "",
-    address: "",
-    city: "",
-    phone: "",
-    lat: "0",
-    lng: "0",
-  });
+export default function SearchPage() {
+  const [businessName, setBusinessName] = useState("");
+  const [location, setLocation] = useState("");
+  const [phone, setPhone] = useState("");
+  const [locationLink, setlocationLink] = useState("");
+  const [isScraping, setIsScraping] = useState(false);
+  const [results, setResults] = useState<EnhancedBusiness[]>([]);
+  const [showAudit, setShowAudit] = useState(false);
+  const [isOn, setIsOn] = useState(false);
+  const [isSOn, setSIsOn] = useState(false);
 
-  const API_URL = "http://localhost:4000/locations-history";
+  // --- Sequential Testing States ---
+  const [testList, setTestList] = useState<TestInput[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
 
-  const fetchBusinesses = async () => {
+  // --- Filter States ---
+  const [selectedSources, setSelectedSources] = useState<string[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string[]>([
+    "Verified",
+    "Mismatch",
+  ]);
+
+  const socketRef = useRef<Socket | null>(null);
+
+  // Load the test.txt data automatically on component mount
+  useEffect(() => {
+      const loadTestData = async () => {
     try {
-      const res = await fetch(`${API_URL}/all`);
-      const data: Business[] = await res.json();
-      setBusinesses(Array.isArray(data) ? data : []);
+      const res = await fetch("/test.txt");
+
+      if (!res.ok) {
+        throw new Error("Failed to load test.txt");
+      }
+
+      // Read as text first
+      const text = await res.text();
+
+      // Parse JSON array from file
+      const data: TestInput[] = JSON.parse(text);
+
+      if (Array.isArray(data)) {
+        setTestList(data);
+        console.log("Loaded test list:", data);
+      } else {
+        console.error("test.txt does not contain an array");
+      }
     } catch (err) {
-      console.error("Failed to fetch", err);
-    } finally {
-      setLoading(false);
+      console.error("Failed to load test data:", err);
     }
   };
 
-  useEffect(() => {
-    setIsClient(true);
-    fetchBusinesses();
+  loadTestData();
   }, []);
 
-  const deleteBusiness = async (id: number | undefined) => {
-    if (!id || !confirm("Are you sure you want to delete this location?")) return;
-    await fetch(`${API_URL}/${id}`, { method: "DELETE" });
-    fetchBusinesses();
-    // Delete ke baad agar page khali ho jaye toh piche wale page par bhejein
-    if (currentRecords.length === 1 && currentPage > 1) {
-        setCurrentPage(currentPage - 1);
+  useEffect(() => {
+    const socket = io("http://localhost:4000", {
+      reconnection: true,
+      reconnectionAttempts: 3,
+      reconnectionDelay: 5000,
+    });
+    socketRef.current = socket;
+
+    socket.on("dataChunk", (newResult: EnhancedBusiness) => {
+      setResults((prev) => {
+        const exists = prev.findIndex(
+          (r) => r.meta.source === newResult.meta.source,
+        );
+        if (exists > -1) {
+          const updated = [...prev];
+          updated[exists] = newResult;
+          return updated;
+        }
+        return [...prev, newResult];
+      });
+    });
+
+    socket.on("scrapingFinished", () => {
+      setIsScraping(false);
+    });
+
+    return () => {
+      socket.off("dataChunk");
+      socket.off("scrapingFinished");
+      socket.disconnect();
+    };
+  }, []);
+
+  // --- Step-by-Step Test Execution ---
+  const handleNextTestStep = () => {
+    if (currentIndex >= testList.length) {
+      alert(
+        "🎉 All test data objects have been executed! Resetting index back to 0.",
+      );
+      setCurrentIndex(0);
+      return;
     }
+
+    const currentItem = testList[currentIndex];
+
+    // 1. Automatically fill the input text states
+    setBusinessName(currentItem.businessName || "");
+    setLocation(currentItem.location || "");
+    setPhone(currentItem.phone || "");
+    setlocationLink(currentItem.locationLink || "");
+
+    // 2. Clear old dashboard logs and start execution
+    setResults([]);
+    setIsScraping(true);
+
+    socketRef.current?.emit("startScraping", {
+      name: currentItem.businessName,
+      location: currentItem.location,
+      phone: currentItem.phone || "",
+      locationLink: currentItem.locationLink || "",
+    });
+
+    // 3. Increment sequence marker for the next manual click event
+    setCurrentIndex((prev) => prev + 1);
   };
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    const payload = { ...formData, additionalAttributes: { "Free WiFi": true }, hours: [] };
-    const res = await fetch(`${API_URL}/add`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+  // --- Form Reset Trigger ---
+  const handleClearForm = () => {
+    setBusinessName("");
+    setLocation("");
+    setPhone("");
+    setlocationLink("");
+    setResults([]);
+  };
+
+  // --- Logic for Filters ---
+  const uniqueSources = useMemo(() => {
+    return Array.from(new Set(results.map((r) => r.meta.source)));
+  }, [results]);
+
+  const filteredResults = useMemo(() => {
+    return results.filter((item) => {
+      const sourceMatch =
+        selectedSources.length === 0 ||
+        selectedSources.includes(item.meta.source);
+      const statusMatch =
+        statusFilter.length === 0 || statusFilter.includes(item.audit.status);
+      return sourceMatch && statusMatch;
     });
-    if (res.ok) {
-      setFormData({ name: "", address: "", city: "", phone: "", lat: "", lng: "" });
-      fetchBusinesses();
+  }, [results, selectedSources, statusFilter]);
+
+  const toggleSource = (source: string) => {
+    setSelectedSources((prev) =>
+      prev.includes(source)
+        ? prev.filter((s) => s !== source)
+        : [...prev, source],
+    );
+  };
+
+  const toggleStatus = (status: string) => {
+    setStatusFilter((prev) =>
+      prev.includes(status)
+        ? prev.filter((s) => s !== status)
+        : [...prev, status],
+    );
+  };
+
+  const handleStartScraping = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!businessName || !location) {
+      alert("Please enter both Business Name and Location");
+      return;
     }
+
+    setIsScraping(true);
+    setResults([]);
+
+    socketRef.current?.emit("startScraping", {
+      name: businessName,
+      location: location,
+      phone: phone,
+      locationLink: locationLink,
+    });
+  };
+
+  const handleCheckAudit = async () => {
+    if (!phone) {
+      alert("Please enter a phone number to audit accuracy.");
+      return;
+    }
+    setShowAudit(true);
+    await handleStartScraping();
+  };
+
+  const getSourceColor = (source: string = "") => {
+    const s = source.toLowerCase();
+    if (s.includes("google")) return "#4285F4";
+    if (s.includes("yelp")) return "#b90c0c";
+    if (s.includes("facebook")) return "#1877f2";
+    if (s.includes("instagram")) return "#c13584";
+    if (s.includes("mapquest")) return "#69f79b";
+    if (s.includes("n49")) return "#e65b29";
+    if (s.includes("opendi")) return "#ffcc00";
+    if (s.includes("profile")) return "#ff1f1f";
+    if (s.includes("hotfrog")) return "#610094";
+    if (s.includes("iglobal")) return "#00a8cc";
+    return "#82888e";
   };
 
   return (
-    <div className="container">
-      <header style={{ marginBottom: "30px" }}>
-        <h1 style={{ fontSize: "2.5rem" }}>
-          Yext <span style={{ color: "var(--accent-color)" }}>Dummy</span>
-        </h1>
-        <p style={{ color: "var(--text-color)", opacity: 0.7 }}>Enterprise Location Knowledge Graph</p>
-      </header>
+    <div
+      style={{
+        backgroundColor: "#0f172a",
+        minHeight: "100vh",
+        color: "white",
+        padding: "40px 20px",
+        fontFamily: "sans-serif",
+      }}
+    >
+      <div style={{ maxWidth: "1200px", margin: "0 auto" }}>
+        {/* Search Header */}
+        <div
+          style={{
+            background: "#1e293b",
+            padding: "40px",
+            borderRadius: "20px",
+            border: "1px solid #334155",
+            textAlign: "center",
+            marginBottom: "40px",
+          }}
+        >
+          <h1 style={{ fontSize: "2rem", marginBottom: "10px" }}>
+            🔍 Multi-Source NAP Scraper
+          </h1>
+          <p style={{ color: "#bdc9d9", marginBottom: "30px" }}>
+            Cross-reference data across the web
+          </p>
 
-      <div style={{ display: "flex", gap: "15px", marginBottom: "20px" }}>
-        <div style={{ padding: "10px 20px", borderRadius: "8px", background: "var(--accent-color)", color: "white", fontWeight: "bold" }}>
-          Total: {businesses.length}
-        </div>
-        <button onClick={() => router.push("/search")} style={{ backgroundColor: "#28a745", color: "white" }}>
-          🔍 Discover New Locations
-        </button>
-      </div>
+          <form
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "15px",
+              justifyContent: "center",
+            }}
+          >
+            <input
+              type="text"
+              placeholder="Business Name"
+              value={businessName}
+              onChange={(e) => setBusinessName(e.target.value)}
+              style={inputStyle}
+            />
+            <input
+              type="text"
+              placeholder="Location/Address "
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              style={inputStyle}
+            />
+            <input
+              type="tel"
+              placeholder="Phone Number"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              style={inputStyle}
+            />
+            <input
+              type="url"
+              placeholder="Website Link"
+              value={locationLink}
+              onChange={(e) => setlocationLink(e.target.value)}
+              style={inputStyle}
+            />
 
-      {isClient ? <Map businesses={businesses} /> : <div className="map-container" />}
+            <button
+              type="button"
+              onClick={() => handleStartScraping()}
+              disabled={isScraping}
+              style={{
+                ...buttonStyle,
+                background: isScraping ? "#475569" : "#02727c",
+              }}
+            >
+              {isScraping ? "Scraping..." : "Search All Sources"}
+            </button>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "30px", marginTop: "20px" }}>
-        {/* Form Section */}
-        <section style={{ backgroundColor: "var(--card-bg)", padding: "25px", borderRadius: "12px", border: "1px solid var(--border-color)" }}>
-          <h2 style={{ marginTop: 0, marginBottom: "20px", fontSize: "1.2rem" }}>🏥 Add New Hospital</h2>
-          <form onSubmit={handleSubmit}>
-            <div className="form-group"><input type="text" placeholder="Hospital Name" required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} /></div>
-            <div className="form-group"><input type="text" placeholder="Address" required value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })} /></div>
-            <div className="form-group" style={{ display: "flex", gap: "10px" }}>
-              <input type="text" placeholder="City" required value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} />
-              <input type="text" placeholder="Phone" required value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} />
-            </div>
-            <button type="submit" style={{ width: "100%" }}>Add to Network</button>
+            {/* --- Updated Sequential Testing UI Controls --- */}
+            <button
+              type="button"
+              onClick={handleNextTestStep}
+              disabled={isScraping}
+              style={{ ...buttonStyle, background: "#d97706" }}
+            >
+              ⚡ Run Test Step (Item {currentIndex + 1}/{testList.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={handleClearForm}
+              style={{ ...buttonStyle, background: "#ef4444" }}
+            >
+              🧹 Clear Form
+            </button>
+
+            {results.length > 0 && (
+              <button
+                type="button"
+                onClick={handleCheckAudit}
+                style={{
+                  ...buttonStyle,
+                  background: "#334155",
+                  border: "1px solid #475569",
+                }}
+              >
+                Re-Audit Accuracy
+              </button>
+            )}
           </form>
-        </section>
+        </div>
 
-        {/* List Section */}
-        <section style={{ gridColumn: "span 2" }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: "20px" }}>
-            <h2 style={{ fontSize: "1.2rem", margin: 0 }}>📋 Searched Locations</h2>
-            <span style={{ fontSize: '0.9rem', opacity: 0.7 }}>
-              Showing {businesses.length > 0 ? indexOfFirstRecord + 1 : 0}-{Math.min(indexOfLastRecord, businesses.length)} of {businesses.length}
-            </span>
-          </div>
+        {/* --- Filter Controls --- */}
+        {results.length > 0 && (
+          <div
+            style={{
+              background: "#1e293b",
+              padding: "30px",
+              borderRadius: "15px",
+              marginBottom: "50px",
+              border: "1px solid #334155",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <p
+                style={{
+                  fontSize: "0.8rem",
+                  color: "#94a3b8",
+                  marginBottom: "2px",
+                  fontWeight: "bold",
+                }}
+              >
+                FILTER BY SOURCE AND STATUS:
+              </p>
 
-          {loading ? (
-            <p>Fetching data...</p>
-          ) : currentRecords.length > 0 ? (
-            <>
-              {currentRecords.map((bus) => (
-                <div key={bus.id} className="business-card">
-                  <div>
-                    <h3 style={{ margin: "0 0 5px 0", color: "var(--header-text)" }}>{bus.name}</h3>
-                    <p style={{ margin: 0, fontSize: "0.9rem", opacity: 0.8 }}>📍 {bus.address}</p>
-                    <small style={{ color: "var(--accent-color)" }}>{bus.phone}</small>
-                    <div>
-                      <a href={bus.locationLink} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent-color)", textDecoration: "underline", fontSize: '0.8rem' }}>
-                        View Maps
-                      </a>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: "10px" }}>
-                    <button style={{ backgroundColor: "#298a87", padding: "8px 15px" }}>Edit</button>
-                    <button onClick={() => deleteBusiness(bus.id)} style={{ backgroundColor: "#68151d", padding: "8px 15px" }}>Delete</button>
-                  </div>
+              {/* Source Filters */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  position: "relative",
+                  width: "auto",
+                }}
+              >
+                <div
+                  onClick={() => setSIsOn(!isSOn)}
+                  style={{
+                    cursor: "pointer",
+                    margin: "5px",
+                    fontSize: "0.9rem",
+                    color: "#94a3b8",
+                    marginBottom: "10px",
+                    fontWeight: "bold",
+                  }}
+                >
+                  <span>{isSOn ? "Close" : " Source"}</span>
                 </div>
-              ))}
-
-              {/* Pagination UI */}
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', marginTop: '20px' }}>
-                <button 
-                  disabled={currentPage === 1} 
-                  onClick={() => setCurrentPage(prev => prev - 1)}
-                  style={{ opacity: currentPage === 1 ? 0.5 : 1, cursor: currentPage === 1 ? 'not-allowed' : 'pointer' }}
-                >
-                  Previous
-                </button>
-                <span>Page {currentPage} of {totalPages || 1}</span>
-                <button 
-                  disabled={currentPage === totalPages || totalPages === 0} 
-                  onClick={() => setCurrentPage(prev => prev + 1)}
-                  style={{ opacity: (currentPage === totalPages || totalPages === 0) ? 0.5 : 1, cursor: (currentPage === totalPages || totalPages === 0) ? 'not-allowed' : 'pointer' }}
-                >
-                  Next
-                </button>
+                <div style={toggleSBoxStyle}>
+                  {isSOn && (
+                    <ul
+                      style={{
+                        listStyle: "none",
+                        padding: "10px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "5px",
+                      }}
+                    >
+                      {uniqueSources.map((source) => (
+                        <li
+                          key={source}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            padding: "8px 12px",
+                          }}
+                        >
+                          <label style={checkboxLabelStyle}>
+                            <input
+                              type="checkbox"
+                              checked={selectedSources.includes(source)}
+                              onChange={() => toggleSource(source)}
+                              style={{ marginRight: "1px" }}
+                            />
+                            {source}
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
-            </>
-          ) : (
-            <p>No locations found.</p>
-          )}
-        </section>
+
+              {/* Status Filter */}
+              <div
+                style={{
+                  display: "inline-block",
+                  flexDirection: "column",
+                  position: "relative",
+                  width: "auto",
+                }}
+              >
+                <div
+                  onClick={() => setIsOn(!isOn)}
+                  style={{
+                    cursor: "pointer",
+                    margin: "2px",
+                    fontSize: "0.9rem",
+                    color: "#94a3b8",
+                    marginBottom: "10px",
+                    fontWeight: "bold",
+                  }}
+                >
+                  <span>{isOn ? "Close" : " Status"}</span>
+                </div>
+                <div style={toggleBoxStyle}>
+                  {isOn && (
+                    <ul
+                      style={{
+                        listStyle: "none",
+                        padding: "2px",
+                        display: "flex",
+                        flexDirection: "row",
+                        gap: "5px",
+                      }}
+                    >
+                      {["Verified", "Mismatch"].map((status) => (
+                        <li key={status}>
+                          <label style={checkboxLabelStyle}>
+                            <input
+                              type="checkbox"
+                              checked={statusFilter.includes(status)}
+                              onChange={() => toggleStatus(status)}
+                              style={{ marginRight: "1px" }}
+                            />
+                            {status}
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <p style={{ color: "yellow", marginBottom: "10px" }}>
+          Total Results: {results.length} | Filtered: {filteredResults.length}
+        </p>
+
+        {/* Results Table */}
+        {filteredResults.length > 0 && (
+          <div
+            style={{
+              background: "#1e293b",
+              borderRadius: "15px",
+              overflow: "hidden",
+              border: "1px solid #334155",
+            }}
+          >
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr style={{ background: "#334155", textAlign: "left" }}>
+                  <th style={thStyle}>Source</th>
+                  <th style={thStyle}>Name</th>
+                  <th style={thStyle}>Address</th>
+                  <th style={thStyle}>Phone</th>
+                  <th style={thStyle}>Link</th>
+                  <th style={{ ...thStyle, background: "#0284c7" }}>
+                    Audit Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredResults.map((item, idx) => (
+                  <tr key={idx} style={{ borderBottom: "1px solid #334155" }}>
+                    <td style={tdStyle}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: "10px",
+                            height: "10px",
+                            borderRadius: "50%",
+                            background: getSourceColor(item.meta.source),
+                            display: "inline-block",
+                          }}
+                        />
+                        <span
+                          style={{
+                            fontSize: "0.75rem",
+                            fontWeight: "bold",
+                            padding: "4px 8px",
+                            borderRadius: "5px",
+                            background: "#1e293b",
+                            border: `1px solid ${getSourceColor(item.meta.source)}`,
+                            color: getSourceColor(item.meta.source),
+                          }}
+                        >
+                          {item.meta.source}
+                        </span>
+                      </div>
+                    </td>
+                    <td style={tdStyle}>
+                      {item.scraped.name || item.audit.results.name || "—"}
+                    </td>
+                    <td
+                      style={{
+                        ...tdStyle,
+                        color: "#94a3b8",
+                        fontSize: "0.85rem",
+                      }}
+                    >
+                      {item.scraped.address ||
+                        item.audit.results.address ||
+                        "—"}
+                    </td>
+                    <td style={tdStyle}>
+                      {item.scraped.phone || item.audit.results.phone || "—"}
+                    </td>
+                    <td style={tdStyle}>
+                      {item.meta.locationLink ? (
+                        <a
+                          href={item.meta.locationLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: "#38bdf8", textDecoration: "none" }}
+                        >
+                          Link
+                        </a>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td style={tdStyle}>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "4px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: "0.7rem",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            width: "fit-content",
+                            background:
+                              item.audit.status === "Verified"
+                                ? "#10b981"
+                                : "#ef4444",
+                          }}
+                        >
+                          {item.audit.status}
+                        </span>
+                        <div
+                          style={{
+                            fontSize: "0.8rem",
+                            display: "flex",
+                            gap: "8px",
+                          }}
+                        >
+                          <span>N:{item.audit.matched.name ? "✅" : "❌"}</span>
+                          <span>
+                            A:{item.audit.matched.address ? "✅" : "❌"}
+                          </span>
+                          <span>
+                            P:{item.audit.matched.phone ? "✅" : "❌"}
+                          </span>
+                        </div>
+                        <div>
+                          <span>score:{item.audit.score}</span>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
+const inputStyle = {
+  flex: "2",
+  minWidth: "200px",
+  padding: "12px",
+  borderRadius: "8px",
+  border: "1px solid #334155",
+  background: "#0f172a",
+  color: "white",
+};
+const buttonStyle = {
+  padding: "12px 20px",
+  borderRadius: "8px",
+  border: "none",
+  color: "white",
+  fontWeight: "bold" as const,
+  cursor: "pointer",
+};
+const thStyle = { padding: "15px", fontSize: "0.8rem", color: "#cbd5e1" };
+const tdStyle = { padding: "15px", fontSize: "0.85rem" };
+const checkboxLabelStyle = {
+  display: "flex",
+  flexDirection: "row" as const,
+  gap: "2px",
+  alignItems: "left",
+  fontSize: "0.80rem",
+  cursor: "pointer",
+  borderRadius: "4px",
+  maxWidth: "auto",
+};
+const toggleBoxStyle = {
+  display: "flex-box",
+  flexDirection: "column" as const,
+  maxWidth: "20em",
+  background: "#334155",
+  borderRadius: "3px",
+  border: "1px solid black",
+  color: "#ccc",
+  position: "absolute" as const,
+  top: "100%",
+  left: "0",
+  overflow: "visible",
+  marginRight: "12px",
+};
+const toggleSBoxStyle = {
+  display: "flex-box",
+  flexDirection: "column" as const,
+  maxWidth: "130px",
+  background: "#334155",
+  borderRadius: "3px",
+  border: "1px solid black",
+  color: "#ccc",
+  position: "absolute" as const,
+  top: "100%",
+  left: "0",
+  overflow: "visible",
+};

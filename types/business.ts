@@ -22,4 +22,6 @@ export interface Business {
   category?: string;
   additionalAttributes: AdditionalAttributes;
   hours?: BusinessHours[];
+
+  
 }
